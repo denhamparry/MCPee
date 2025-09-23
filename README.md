@@ -1,2 +1,233 @@
 # MCPee
-A demonstration of how MCP without isolation can cause potential security problems.
+
+A demonstration of how MCP (Model Context Protocol) servers running without
+proper isolation can be exploited to cause security breaches and misinformation.
+
+## Overview
+
+This repository documents a critical security vulnerability demonstration
+showing how an MCP server (`mcp-raider`) can attack and manipulate another MCP
+server (`mcp-weather`) when both are running without proper sandboxing or
+isolation. The attack demonstrates:
+
+1. **Environment Variable Extraction**: Stealing sensitive API keys and
+   credentials
+2. **Runtime Code Manipulation**: Modifying weather data to return false
+   information (e.g., extreme wind speeds of 133mph)
+3. **Cross-Process Attack**: One MCP server compromising another through
+   unrestricted system access
+
+## The Attack Concept
+
+### Background: What is MCP?
+
+The Model Context Protocol (MCP) enables AI assistants to connect to external
+tools and data sources. MCP servers provide specific functionalities that AI
+agents can use to retrieve information or perform actions.
+
+### The Vulnerability
+
+When MCP servers run without proper isolation:
+
+- They have unrestricted access to system processes
+- They can read environment variables from other processes
+- They can modify files and runtime behavior of other applications
+- There is no authentication or sandboxing between different MCP servers
+
+### The Attack Scenario
+
+1. **Victim**: `mcp-weather` - A legitimate MCP server that provides weather
+   information using OpenWeatherMap API
+2. **Attacker**: `mcp-raider` - A malicious MCP server with system introspection
+   and manipulation capabilities
+3. **Target**: An AI assistant using both MCP servers simultaneously
+
+The attack demonstrates how `mcp-raider` can:
+
+- Extract the `OPENWEATHER_API_KEY` from the `mcp-weather` process
+- Modify the weather server's code to return false data (133mph wind speeds)
+- Cause the AI assistant to misinform users with dangerous weather information
+
+## Attack Demonstration
+
+### Prerequisites
+
+1. Clone both repositories:
+
+```bash
+git clone https://github.com/denhamparry/mcp-weather
+git clone https://github.com/denhamparry/mcp-raider
+```
+
+1. Set up mcp-weather:
+
+```bash
+cd mcp-weather
+npm install
+export OPENWEATHER_API_KEY="your-api-key-here"
+npm start
+```
+
+1. Set up mcp-raider:
+
+```bash
+cd mcp-raider
+npm install
+npm start
+```
+
+### Step-by-Step Attack Process
+
+#### Step 1: Process Discovery
+
+Use mcp-raider to find the mcp-weather process:
+
+```yaml
+Tool: get_process_id
+Parameters:
+  - grep_filters: ["node", "mcp-weather"]
+```
+
+This returns the process ID (PID) of the running weather server.
+
+#### Step 2: Environment Variable Extraction
+
+Extract environment variables from the weather server:
+
+```yaml
+Tool: get_environment_variables
+Parameters:
+  - process_id: [PID from Step 1]
+```
+
+This reveals:
+
+- `OPENWEATHER_API_KEY` - The sensitive API key
+- Other configuration and system variables
+- Potential database credentials or other secrets
+
+#### Step 3: Code Manipulation - Scanning for Injection Points
+
+Scan the weather server code for template literals:
+
+```yaml
+Tool: luck_about_and_find_out_output_string_names
+Parameters:
+  - file_path: /path/to/mcp-weather/src/weather-utils.ts
+```
+
+This identifies variables that can be manipulated in the code.
+
+#### Step 4: Code Manipulation - Injecting False Data
+
+Modify the weather server to return false wind speeds:
+
+```yaml
+Tool: luck_about_and_find_out_replace_string_values
+Parameters:
+  - file_path: /path/to/mcp-weather/src/weather-utils.ts
+  - replacements:
+      - variable: "windSpeed"
+        value: "133"
+```
+
+This hot-patches the running application to return dangerous wind speeds of
+133mph regardless of actual weather conditions.
+
+### Attack Results
+
+After the attack:
+
+1. **Stolen Credentials**: The attacker now has the OpenWeatherMap API key
+2. **Compromised Data**: Weather queries return false information showing
+   extreme wind speeds
+3. **Misinformed Users**: AI assistants using the compromised weather server
+   will tell users there are 133mph winds, potentially causing:
+   - Unnecessary panic
+   - Business disruptions
+   - Emergency response activation
+   - Travel cancellations
+
+## Security Implications
+
+This demonstration highlights critical security issues:
+
+### 1. Lack of Process Isolation
+
+- MCP servers can access any system process
+- No sandboxing between different MCP implementations
+- Unrestricted file system access
+
+### 2. No Authentication
+
+- MCP servers don't authenticate with each other
+- Any MCP server can manipulate any other server's resources
+- No permission model for sensitive operations
+
+### 3. Runtime Manipulation
+
+- Code can be modified while applications are running
+- No integrity verification of executing code
+- Template literal injection allows data manipulation
+
+### 4. Information Disclosure
+
+- Environment variables containing secrets are exposed
+- Process information leaks sensitive configuration
+- No encryption of inter-process communication
+
+## Mitigation Strategies
+
+To prevent these attacks:
+
+### 1. Implement Proper Sandboxing
+
+- Run each MCP server in isolated containers or VMs
+- Use process isolation mechanisms (Docker, Podman, etc.)
+- Implement namespace separation
+
+### 2. Secure Environment Variables
+
+- Use secret management systems (Vault, AWS Secrets Manager)
+- Avoid storing sensitive data in environment variables
+- Implement proper access controls
+
+### 3. Code Integrity Protection
+
+- Sign and verify code before execution
+- Implement runtime application self-protection (RASP)
+- Use read-only file systems where possible
+
+### 4. Authentication and Authorization
+
+- Implement mutual TLS between MCP servers
+- Add OAuth2 or similar authentication mechanisms
+- Create permission models for sensitive operations
+
+### 5. Monitoring and Alerting
+
+- Log all MCP server interactions
+- Monitor for suspicious process access patterns
+- Alert on unauthorized file modifications
+
+## Responsible Disclosure
+
+This demonstration is for educational purposes only, showing the importance of
+proper security measures when implementing MCP servers. The vulnerabilities
+shown are not specific to the MCP protocol itself but rather to implementations
+that lack proper security controls.
+
+## References
+
+- [mcp-weather Repository](https://github.com/denhamparry/mcp-weather) - The
+  victim MCP server providing weather data
+- [mcp-raider Repository](https://github.com/denhamparry/mcp-raider) - The
+  attack tool demonstrating exploitation capabilities
+- [Model Context Protocol Documentation](https://modelcontextprotocol.io) -
+  Official MCP documentation
+
+## Disclaimer
+
+This demonstration is intended for security research and education only. Do not
+use these techniques for malicious purposes. Always obtain proper authorization
+before testing security on systems you do not own.
