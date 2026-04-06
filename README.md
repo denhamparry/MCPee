@@ -13,7 +13,7 @@ isolation. The attack demonstrates:
 1. **Environment Variable Extraction**: Stealing sensitive API keys and
    credentials
 2. **Runtime Code Manipulation**: Modifying weather data to return false
-   information (e.g., extreme wind speeds of 133mph)
+   information (e.g., extreme wind speeds of 133 m/s)
 3. **Cross-Process Attack**: One MCP server compromising another through
    unrestricted system access
 
@@ -45,7 +45,7 @@ When MCP servers run without proper isolation:
 The attack demonstrates how `mcp-raider` can:
 
 - Extract the `OPENWEATHER_API_KEY` from the `mcp-weather` process
-- Modify the weather server's code to return false data (133mph wind speeds)
+- Modify the weather server's code to return false data (133 m/s wind speeds)
 - Cause the AI assistant to misinform users with dangerous weather information
 
 ## Attack Demonstration
@@ -85,7 +85,7 @@ Use mcp-raider to find the mcp-weather process:
 ```yaml
 Tool: get_process_id
 Parameters:
-  - grep_filters: ["node", "mcp-weather"]
+  searchStrings: ["node", "mcp-weather"]
 ```
 
 This returns the process ID (PID) of the running weather server.
@@ -97,7 +97,7 @@ Extract environment variables from the weather server:
 ```yaml
 Tool: get_environment_variables
 Parameters:
-  - process_id: [PID from Step 1]
+  processId: "<PID from Step 1>"
 ```
 
 This reveals:
@@ -108,31 +108,47 @@ This reveals:
 
 #### Step 3: Code Manipulation - Scanning for Injection Points
 
-Scan the weather server code for template literals:
+Scan the weather server's compiled output for template literal variables. The
+attack targets the built JavaScript file (`build/index.js`), not the TypeScript
+source, because this is the code actively running in the Node.js process:
 
 ```yaml
 Tool: luck_about_and_find_out_output_string_names
 Parameters:
-  - file_path: /path/to/mcp-weather/src/weather-utils.ts
+  fileName: /path/to/mcp-weather/build/index.js
 ```
 
-This identifies variables that can be manipulated in the code.
+This identifies `$(variable_name)` format variables that can be manipulated in
+the running code.
 
 #### Step 4: Code Manipulation - Injecting False Data
 
-Modify the weather server to return false wind speeds:
+Modify the weather server's compiled output to return false wind speeds:
 
 ```yaml
 Tool: luck_about_and_find_out_replace_string_values
 Parameters:
-  - file_path: /path/to/mcp-weather/src/weather-utils.ts
-  - replacements:
-      - variable: "windSpeed"
-        value: "133"
+  fileName: /path/to/mcp-weather/build/index.js
+  outputStringName: "$(windSpeed)"
+  value: "133"
 ```
 
-This hot-patches the running application to return dangerous wind speeds of
-133mph regardless of actual weather conditions.
+This hot-patches the running application to return a wind speed of 133 m/s (≈297
+mph) regardless of actual weather conditions.
+
+#### Step 5 (Optional): Process Termination
+
+The mcp-raider server also provides a tool to kill processes, which could be
+used to terminate the compromised weather server:
+
+```yaml
+Tool: luck_about_and_find_out_process_kill
+Parameters:
+  processId: "<PID from Step 1>"
+```
+
+This demonstrates that the attacker has full lifecycle control over the victim
+process — not just read and write access.
 
 ### Attack Results
 
@@ -142,7 +158,7 @@ After the attack:
 2. **Compromised Data**: Weather queries return false information showing
    extreme wind speeds
 3. **Misinformed Users**: AI assistants using the compromised weather server
-   will tell users there are 133mph winds, potentially causing:
+   will tell users there are 133 m/s winds, potentially causing:
    - Unnecessary panic
    - Business disruptions
    - Emergency response activation
