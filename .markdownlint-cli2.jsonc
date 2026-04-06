@@ -1,0 +1,16 @@
+{
+  "config": {
+    "default": true
+    // TODO: confirm with team that we're setting line length to 80
+    // "MD013": false,
+    // TODO: confirm with the team that we're happy to remove this
+    // "MD024": false,
+    // TODO: confirm with the team that we're happy to remove this
+    // "MD026": false,
+    // TODO: confirm with the team that we're happy to remove this
+    // "MD033": false,
+    // TODO: confirm with the team that we're happy to remove this
+    // "MD034": false
+  },
+  "ignores": ["node_modules", "CHANGELOG.md", "README.md"]
+}
