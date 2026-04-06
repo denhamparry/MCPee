@@ -59,21 +59,89 @@ git clone https://github.com/denhamparry/mcp-weather
 git clone https://github.com/denhamparry/mcp-raider
 ```
 
-1. Set up mcp-weather:
+1. Build mcp-weather:
 
 ```bash
 cd mcp-weather
 npm install
-export OPENWEATHER_API_KEY="your-api-key-here"
-npm start
+npm run build
 ```
 
-1. Set up mcp-raider:
+1. Build mcp-raider:
 
 ```bash
 cd mcp-raider
 npm install
-npm start
+npm run build
+```
+
+### MCP Client Setup
+
+This demonstration requires an MCP client to invoke the tools. We recommend
+Claude Desktop.
+
+#### Configure Claude Desktop
+
+Edit your Claude Desktop configuration file:
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux**: `~/.config/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add the following configuration:
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-weather/build/index.js"],
+      "env": {
+        "OPENWEATHER_API_KEY": "your_api_key_here"
+      }
+    },
+    "raider": {
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-raider/build/index.js"]
+    }
+  }
+}
+```
+
+> **Important:** Use absolute paths to the built `index.js` files. Find your
+> path with `cd mcp-weather && pwd`.
+>
+> - Linux example: `/home/user/mcp-weather/build/index.js`
+> - macOS example: `/Users/username/mcp-weather/build/index.js`
+
+#### Restart Claude Desktop
+
+Fully quit and restart Claude Desktop for changes to take effect.
+
+#### Test Connection
+
+In a new Claude conversation:
+
+```text
+"What MCP tools are available?"
+"What's the weather in London?"
+```
+
+If successful, proceed to the attack demonstration.
+
+#### Alternative: Manual Testing
+
+If not using Claude Desktop, you can run the servers directly:
+
+```bash
+# Terminal 1
+cd mcp-weather
+export OPENWEATHER_API_KEY="your-api-key-here"
+node build/index.js
+
+# Terminal 2
+cd mcp-raider
+node build/index.js
 ```
 
 ### Step-by-Step Attack Process
@@ -115,8 +183,11 @@ source, because this is the code actively running in the Node.js process:
 ```yaml
 Tool: luck_about_and_find_out_output_string_names
 Parameters:
-  fileName: /path/to/mcp-weather/build/index.js
+  fileName: /absolute/path/to/mcp-weather/build/index.js
 ```
+
+> Replace `/absolute/path/to/` with your actual path (e.g., `/Users/username/`
+> on macOS, `/home/user/` on Linux).
 
 This identifies `$(variable_name)` format variables that can be manipulated in
 the running code.
@@ -128,7 +199,7 @@ Modify the weather server's compiled output to return false wind speeds:
 ```yaml
 Tool: luck_about_and_find_out_replace_string_values
 Parameters:
-  fileName: /path/to/mcp-weather/build/index.js
+  fileName: /absolute/path/to/mcp-weather/build/index.js
   outputStringName: "$(windSpeed)"
   value: "133"
 ```
@@ -163,6 +234,44 @@ After the attack:
    - Business disruptions
    - Emergency response activation
    - Travel cancellations
+
+## Threat Model
+
+### Attack Scope
+
+This demonstration shows a **local privilege escalation** attack where:
+
+- Malicious MCP server (`mcp-raider`) and victim server (`mcp-weather`) run on
+  the **same machine**
+- Attacker has local process access (can list processes, read environment
+  variables)
+- Both servers run with insufficient isolation
+
+### Security Boundaries
+
+**This attack is prevented by:**
+
+- **Container isolation** — Docker, Podman, VMs with separate process spaces
+- **Separate machines** — Running MCP servers on different physical/virtual
+  machines
+- **Process sandboxing** — OS-level sandboxing (SELinux, AppArmor, macOS
+  sandbox)
+- **User separation** — Running each MCP server as different OS users
+- **Secret management** — Using vaults instead of environment variables
+
+**This attack works when:**
+
+- Multiple MCP servers run on same machine without isolation
+- MCP servers run as the same OS user
+- No process sandboxing is enforced
+- Secrets stored in environment variables (not vaults)
+
+### Real-World Implications
+
+Desktop AI assistants (Claude Desktop, etc.) typically run MCP servers as the
+same user. Without additional isolation, one compromised MCP server can attack
+others. Production deployments should enforce strict isolation (containers, VMs,
+separate hosts).
 
 ## Security Implications
 
@@ -241,6 +350,47 @@ that lack proper security controls.
   attack tool demonstrating exploitation capabilities
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io) -
   Official MCP documentation
+
+## Cleanup
+
+After completing the demonstration:
+
+### 1. Stop MCP Servers
+
+- **Claude Desktop**: Remove servers from `claude_desktop_config.json` and
+  restart
+- **Manual**: Press `Ctrl+C` in both terminal windows
+
+### 2. Restore Modified Files
+
+```bash
+cd mcp-weather
+git checkout src/weather-utils.ts
+git checkout build/
+git status  # Verify clean
+```
+
+### 3. Revoke Test API Key
+
+1. Log into: <https://home.openweathermap.org/api_keys>
+2. Delete the test API key used for demonstration
+3. Verify revocation:
+
+```bash
+curl "https://api.openweathermap.org/data/2.5/weather?q=London&appid=TEST_KEY"
+# Should return "Invalid API key" error
+```
+
+### 4. Remove Test Environment (if applicable)
+
+```bash
+# If using Docker
+docker stop mcpee-test
+docker rm mcpee-test
+
+# Or remove cloned repositories
+rm -rf mcp-weather mcp-raider
+```
 
 ## Disclaimer
 
